@@ -1,10 +1,13 @@
 package channelz
 
 import (
+	"fmt"
 	"io"
+	"net"
 	"text/template"
 	"time"
 
+	channelzgrpc "google.golang.org/grpc/channelz/grpc_channelz_v1"
 	log "google.golang.org/grpc/grpclog"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -33,12 +36,31 @@ func parseTemplate(name, html string) *template.Template {
 func getFuncs() template.FuncMap {
 	return template.FuncMap{
 		"timestamp": formatTimestamp,
+		"address":   formatAddress,
 		"link":      createHyperlink,
 	}
 }
 
 func formatTimestamp(ts *timestamppb.Timestamp) string {
 	return ts.AsTime().Format(time.RFC3339)
+}
+
+func formatAddress(addr *channelzgrpc.Address) string {
+	if addr == nil {
+		return ""
+	}
+	switch a := addr.GetAddress().(type) {
+	case *channelzgrpc.Address_TcpipAddress:
+		tcpAddr := a.TcpipAddress
+		ip := net.IP(tcpAddr.GetIpAddress())
+		return fmt.Sprintf("%s:%d", ip.String(), tcpAddr.GetPort())
+	case *channelzgrpc.Address_UdsAddress_:
+		return fmt.Sprintf("unix:%s", a.UdsAddress.GetFilename())
+	case *channelzgrpc.Address_OtherAddress_:
+		return fmt.Sprintf("%s:%s", a.OtherAddress.GetName(), a.OtherAddress.GetValue())
+	default:
+		return addr.String()
+	}
 }
 
 func writeHeader(w io.Writer, title string) {
